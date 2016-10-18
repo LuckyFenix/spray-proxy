@@ -37,9 +37,11 @@ class MyServiceActor extends Actor with MyService {
 
 
 // this trait defines our service behavior independently from the service actor
-trait MyService extends HttpService { this: MyServiceActor =>
+trait MyService extends HttpService {
+  this: MyServiceActor =>
 
   case class User(name: String, age: Int)
+
   case class UserWF(name: String, age: Int, friends: List[User])
 
   object MyJsonProtocol extends DefaultJsonProtocol {
@@ -56,41 +58,23 @@ trait MyService extends HttpService { this: MyServiceActor =>
   val myRoute =
     path("") {
       get {
-        respondWithMediaType(`text/html`) {
-          // XML is marshalled to `text/xml` by default, so we simply override here
-          complete {
-            <html>
-              <body>
-                <h1>Say hello to
-                  <i>spray-routing</i>
-                  on
-                  <i>spray-can</i>
-                  !</h1>
-              </body>
-            </html>
+        parameter('proxy, 'port.as[Int], 'url) { case (proxy, port, url) =>
+          val pipeline: Future[SendReceive] =
+            for (
+              Http.HostConnectorInfo(connector, _) <-
+              IO(Http) ? Http.HostConnectorSetup(
+                "0.0.0.0",
+                port = 80,
+                connectionType = ClientConnectionType.Proxied(proxy, port)
+              )
+            ) yield sendReceive(connector)
+
+          val response: Future[HttpResponse] = pipeline.flatMap(_(Get(url)))
+
+          onComplete(response) {
+            case Success(v) => complete(v)
+            case Failure(e) => complete("error")
           }
-        }
-      }
-    } ~ path("json" / IntNumber / IntNumber) { case (id1, id2) =>
-      get {
-        val pipeline: Future[SendReceive] =
-          for (
-            Http.HostConnectorInfo(connector, _) <-
-            IO(Http) ? Http.HostConnectorSetup(
-              "0.0.0.0",
-              port = 80,
-              connectionType = ClientConnectionType.Proxied("94.20.21.38", 8888)
-            )
-          ) yield sendReceive(connector)
-
-//        val pipeline: Future[HttpRequest => Future[HttpResponse]] = future(sendReceive)
-
-        val request = Get("https://habrahabr.ru/post/250043/")
-        val response: Future[HttpResponse] = pipeline.flatMap(_(request))
-
-        onComplete(response) {
-          case Success(v) => complete(v)
-          case Failure(e) => complete("error")
         }
       }
     }
