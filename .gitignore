@@ -7,5 +7,5 @@ project/target
 project/project/target
 
 # Scala-IDE specific
-.idea
-.vagrant
+.idea/
+.vagrant/
